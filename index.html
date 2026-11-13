@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apprendre le français</title>
+<style>
+body{font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#f4f6fb}
+h1{color:#1a3c8b;text-align:center}
+button{display:block;width:100%;padding:15px;margin:8px 0;font-size:18px;border:none;border-radius:10px;background:#1a3c8b;color:#fff}
+.rep{background:#fff;color:#222;border:2px solid #1a3c8b}
+</style>
+</head>
+<body>
+<h1>Apprendre le français 🇫🇷</h1>
+<div id="app"></div>
+<script>
+const niveaux={
+"Très débutant":[["Comment dit-on 'hello' ?",["Bonjour","Merci","Au revoir"],0],["'Merci' veut dire…",["Thank you","Sorry","Please"],0],["Je ___ français.",["suis","es","sommes"],0]],
+"Débutant":[["Hier, je ___ au marché.",["suis allé","vais","irai"],0],["Le contraire de 'grand' ?",["petit","gros","long"],0],["Nous ___ une maison.",["avons","avez","ont"],0]],
+"Moyen":[["Il faut que tu ___ ce dossier.",["fasses","fais","feras"],0],["Si j'avais le temps, je ___.",["voyagerais","voyage","voyagerai"],0],["Un synonyme de 'rapidement' ?",["vite","lent","tard"],0]],
+"Expert":[["Quelle est la devise de la République ?",["Liberté, Égalité, Fraternité","Travail, Famille, Patrie","Paix et Unité"],0],["Bien qu'il ___ tard, il travaille.",["soit","est","sera"],0],["Qui vote les lois en France ?",["Le Parlement","Le maire","Le préfet"],0]]
+};
+const app=document.getElementById("app");
+function menu(){app.innerHTML="<p>Choisis ton niveau :</p>";for(const n in niveaux){const b=document.createElement("button");b.textContent=n;b.onclick=()=>quiz(n,0,0);app.appendChild(b)}}
+function quiz(n,i,score){const q=niveaux[n];if(i>=q.length){app.innerHTML="<h2>Score : "+score+"/"+q.length+"</h2>";const b=document.createElement("button");b.textContent="Retour";b.onclick=menu;app.appendChild(b);return}
+const [question,choix,bonne]=q[i];app.innerHTML="<h3>"+n+" ("+(i+1)+"/"+q.length+")</h3><p>"+question+"</p>";
+choix.forEach((c,k)=>{const b=document.createElement("button");b.className="rep";b.textContent=c;b.onclick=()=>{alert(k===bonne?"Bravo ✅":"Non, c'était : "+choix[bonne]);quiz(n,i+1,score+(k===bonne))};app.appendChild(b)})}
+menu();
+</script>
+</body>
+</html>
