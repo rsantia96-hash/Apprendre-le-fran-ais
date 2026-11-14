@@ -3,30 +3,117 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Apprendre le français</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Apprendre le français – B2</title>
 <style>
-body{font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#f4f6fb}
-h1{color:#1a3c8b;text-align:center}
-button{display:block;width:100%;padding:15px;margin:8px 0;font-size:18px;border:none;border-radius:10px;background:#1a3c8b;color:#fff}
-.rep{background:#fff;color:#222;border:2px solid #1a3c8b}
+*{box-sizing:border-box}
+body{font-family:-apple-system,system-ui,sans-serif;max-width:640px;margin:auto;padding:16px;background:#f4f6fb;color:#1d2433;line-height:1.5}
+h1{color:#1a3c8b;text-align:center;font-size:1.6em;margin:8px 0}
+h2{color:#1a3c8b;font-size:1.3em}
+.sous{text-align:center;color:#556;margin-top:0}
+button{display:block;width:100%;padding:14px;margin:8px 0;font-size:17px;border:none;border-radius:12px;background:#1a3c8b;color:#fff;text-align:left;cursor:pointer}
+button.rep{background:#fff;color:#1d2433;border:2px solid #c9d3ea}
+button.ok{background:#e3f6e8;border-color:#2e9d4f}
+button.ko{background:#fde6e6;border-color:#c93a3a}
+button.sec{background:#e8ecf7;color:#1a3c8b;text-align:center}
+.carte{background:#fff;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.regle li{margin:6px 0}
+.ex{color:#2b4a9b;font-style:italic}
+.expl{margin-top:10px;padding:12px;border-radius:10px;background:#f1f4fb}
+.prog{font-size:.9em;color:#556}
 </style>
 </head>
 <body>
 <h1>Apprendre le français 🇫🇷</h1>
+<p class="sous">Préparer le niveau B2 pour la naturalisation</p>
 <div id="app"></div>
 <script>
-const niveaux={
-"Très débutant":[["Comment dit-on 'hello' ?",["Bonjour","Merci","Au revoir"],0],["'Merci' veut dire…",["Thank you","Sorry","Please"],0],["Je ___ français.",["suis","es","sommes"],0]],
-"Débutant":[["Hier, je ___ au marché.",["suis allé","vais","irai"],0],["Le contraire de 'grand' ?",["petit","gros","long"],0],["Nous ___ une maison.",["avons","avez","ont"],0]],
-"Moyen":[["Il faut que tu ___ ce dossier.",["fasses","fais","feras"],0],["Si j'avais le temps, je ___.",["voyagerais","voyage","voyagerai"],0],["Un synonyme de 'rapidement' ?",["vite","lent","tard"],0]],
-"Expert":[["Quelle est la devise de la République ?",["Liberté, Égalité, Fraternité","Travail, Famille, Patrie","Paix et Unité"],0],["Bien qu'il ___ tard, il travaille.",["soit","est","sera"],0],["Qui vote les lois en France ?",["Le Parlement","Le maire","Le préfet"],0]]
+const LECONS={
+connecteurs:{titre:"1. Les connecteurs pour argumenter",
+regle:`<p>Pour donner ton avis à l'oral ou à l'écrit, il faut relier tes idées. Au B2, on attend des mots plus précis que « et » ou « mais ».</p>
+<ul class="regle">
+<li><b>Opposer :</b> mais, cependant, pourtant, en revanche, alors que, tandis que</li>
+<li><b>Concéder :</b> bien que (+ subjonctif), même si (+ indicatif), malgré (+ nom)</li>
+<li><b>Expliquer la cause :</b> parce que, car, puisque, grâce à (positif), à cause de (négatif)</li>
+<li><b>Donner la conséquence :</b> donc, c'est pourquoi, par conséquent, si bien que</li>
+<li><b>Ajouter / organiser :</b> d'abord, ensuite, de plus, en outre, enfin, pour conclure</li>
+</ul>
+<p class="ex">Bien que le travail soit difficile, j'aime mon métier.<br>Il pleuvait ; pourtant, nous sommes sortis.<br>Malgré la fatigue, elle a fini son dossier.</p>`,
+ex:[
+["___ il fasse froid, je sors sans manteau.",["Bien qu'","Même s'","Malgré"],0,"« Bien que » est suivi du subjonctif : il fasse. « Même si » demande l'indicatif (il fait), et « malgré » se met devant un nom."],
+["Je suis en retard ___ des embouteillages.",["à cause","grâce","parce que"],0,"Devant un nom : « à cause de » si c'est négatif. « Grâce à » est pour une cause positive."],
+["Il a beaucoup travaillé, ___ il a réussi.",["donc","pourtant","bien que"],0,"Le travail amène la réussite : c'est une conséquence, donc « donc »."],
+["Ma sœur aime la ville, ___ moi je préfère la campagne.",["alors que","parce que","donc"],0,"On compare deux choses opposées : « alors que » (ou « tandis que »)."],
+["___ la pluie, le marché a eu lieu.",["Malgré","Bien que","Même si"],0,"« Malgré » + nom (la pluie). Les deux autres sont suivis d'un verbe."],
+["Il est très compétent. ___, il manque d'expérience.",["En revanche","Par conséquent","De plus"],0,"On oppose un point positif et un point négatif : « en revanche »."],
+["___ tu es là, aide-moi à porter ça.",["Puisque","Malgré","Pourtant"],0,"« Puisque » donne une cause déjà connue des deux personnes."],
+["Les prix augmentent ; ___, les familles achètent moins.",["par conséquent","cependant","alors que"],0,"Les familles achètent moins à cause des prix : c'est une conséquence."],
+["Même s'il ___ malade, il viendra.",["est","soit","sera"],0,"Après « même si », on utilise l'indicatif, jamais le subjonctif."],
+["J'ai réussi l'examen ___ mon professeur.",["grâce à","à cause de","car"],0,"Une cause positive devant un nom : « grâce à »."]]},
+subjonctif:{titre:"2. Le subjonctif",
+regle:`<p>Le subjonctif s'utilise après des expressions de <b>volonté, d'obligation, de sentiment ou de doute</b>, souvent avec « que ».</p>
+<ul class="regle">
+<li><b>Obligation :</b> il faut que, il est nécessaire que</li>
+<li><b>Volonté :</b> je veux que, je souhaite que, j'aimerais que</li>
+<li><b>Sentiment :</b> je suis contente que, j'ai peur que, c'est dommage que</li>
+<li><b>Doute :</b> je doute que, je ne pense pas que</li>
+<li><b>Après :</b> bien que, pour que, avant que, à condition que</li>
+</ul>
+<p><b>Formation :</b> on part de « ils » au présent (ils finiss-ent) → que je finisse, que tu finisses, qu'il finisse, qu'ils finissent.</p>
+<p><b>Irréguliers à connaître :</b> être → que je sois · avoir → que j'aie · faire → que je fasse · aller → que j'aille · pouvoir → que je puisse · savoir → que je sache · vouloir → que je veuille</p>
+<p><b>Attention :</b> après « je pense que », « je crois que », « espérer que » ou « après que », on garde l'indicatif.</p>
+<p class="ex">Il faut que tu fasses tes devoirs.<br>Je suis contente que vous soyez là.<br>Je pense qu'il vient demain.</p>`,
+ex:[
+["Il faut que nous ___ à l'heure.",["soyons","sommes","serons"],0,"« Il faut que » demande le subjonctif. Être → que nous soyons."],
+["Je veux que tu ___ tes devoirs.",["fasses","fais","feras"],0,"Volonté + subjonctif. Faire → que tu fasses (irrégulier)."],
+["Je pense qu'il ___ raison.",["a","ait","aura eu"],0,"« Je pense que » à la forme positive est suivi de l'indicatif."],
+["Je ne pense pas qu'il ___ raison.",["ait","a","aurait"],0,"À la forme négative, « penser » exprime un doute : subjonctif. Avoir → qu'il ait."],
+["Je suis contente que vous ___ venus.",["soyez","êtes","serez"],0,"Un sentiment + subjonctif. Être → que vous soyez."],
+["Il parle lentement pour que tout le monde ___.",["comprenne","comprend","comprendra"],0,"« Pour que » est toujours suivi du subjonctif."],
+["Il faut que j'___ à la préfecture demain.",["aille","vais","irai"],0,"Aller → que j'aille (forme irrégulière)."],
+["J'espère que tu ___ bien.",["vas","ailles","aille"],0,"Piège : « espérer que » demande l'indicatif."],
+["Avant que les enfants ___, je prépare le repas.",["rentrent","rentreront","sont rentrés"],0,"« Avant que » + subjonctif. Pour un verbe en -er, on part de « ils rentrent »."],
+["Il est possible qu'elle ___ venir ce soir.",["puisse","peut","pourra"],0,"« Il est possible que » exprime un doute : subjonctif. Pouvoir → qu'elle puisse."]]},
+france:{titre:"3. Vivre en France : valeurs et droits",
+regle:`<p>Pour la naturalisation, il faut connaître les valeurs de la République et les grandes règles de la vie en France.</p>
+<ul class="regle">
+<li><b>La devise :</b> « Liberté, Égalité, Fraternité ».</li>
+<li><b>Les symboles :</b> le drapeau bleu, blanc, rouge, la Marseillaise (hymne national), Marianne, et le 14 juillet (fête nationale).</li>
+<li><b>La laïcité :</b> l'État est neutre et ne soutient aucune religion (loi de 1905). Chacun est libre de croire ou de ne pas croire.</li>
+<li><b>L'égalité femmes-hommes :</b> mêmes droits pour tous. Les femmes votent en France depuis 1944.</li>
+<li><b>La démocratie :</b> la Constitution de 1958 (Ve République). Le Président est élu pour 5 ans. Le Parlement (Assemblée nationale et Sénat) vote les lois.</li>
+<li><b>Droits et devoirs :</b> l'école est obligatoire de 3 à 16 ans. On paie ses impôts et on respecte la loi.</li>
+</ul>
+<p><b>Langue :</b> depuis 2026, la naturalisation demande le niveau <b>B2</b> à l'oral et à l'écrit, prouvé par un diplôme ou un test officiel (TCF IRN ou TEF IRN).</p>`,
+ex:[
+["Quelle est la devise de la République française ?",["Liberté, Égalité, Fraternité","Travail, Famille, Patrie","Unité, Paix, Progrès"],0,"La devise est « Liberté, Égalité, Fraternité ». « Travail, Famille, Patrie » était celle du régime de Vichy."],
+["Quel jour est la fête nationale ?",["Le 14 juillet","Le 11 novembre","Le 1er mai"],0,"Le 14 juillet rappelle la prise de la Bastille (1789)."],
+["Que veut dire « laïcité » ?",["L'État est neutre face aux religions","Une seule religion est autorisée","Les religions sont interdites"],0,"La laïcité protège la liberté de croire ou de ne pas croire. L'État ne favorise aucune religion."],
+["Depuis quelle année les femmes votent-elles en France ?",["1944","1789","1981"],0,"Le droit de vote des femmes a été donné en 1944. Elles ont voté pour la première fois en 1945."],
+["Qui vote les lois ?",["Le Parlement","Le Président","Le préfet"],0,"Le Parlement (Assemblée nationale + Sénat) vote les lois."],
+["Pour combien de temps le Président est-il élu ?",["5 ans","7 ans","4 ans"],0,"Depuis 2002, le mandat du Président dure 5 ans (le quinquennat)."],
+["Comment s'appelle l'hymne national ?",["La Marseillaise","Le Chant des partisans","L'Internationale"],0,"L'hymne national est la Marseillaise."],
+["L'école est obligatoire…",["de 3 à 16 ans","de 6 à 14 ans","de 6 à 18 ans"],0,"Depuis 2019, l'instruction est obligatoire de 3 à 16 ans."],
+["Quelle loi sépare les Églises et l'État ?",["La loi de 1905","La loi de 1958","La loi de 1944"],0,"La loi de 1905 sépare les Églises et l'État : c'est la base de la laïcité."],
+["Quel niveau de français faut-il pour la naturalisation (depuis 2026) ?",["B2","A2","B1"],0,"Depuis 2026, il faut le niveau B2 à l'oral et à l'écrit."]]}
 };
 const app=document.getElementById("app");
-function menu(){app.innerHTML="<p>Choisis ton niveau :</p>";for(const n in niveaux){const b=document.createElement("button");b.textContent=n;b.onclick=()=>quiz(n,0,0);app.appendChild(b)}}
-function quiz(n,i,score){const q=niveaux[n];if(i>=q.length){app.innerHTML="<h2>Score : "+score+"/"+q.length+"</h2>";const b=document.createElement("button");b.textContent="Retour";b.onclick=menu;app.appendChild(b);return}
-const [question,choix,bonne]=q[i];app.innerHTML="<h3>"+n+" ("+(i+1)+"/"+q.length+")</h3><p>"+question+"</p>";
-choix.forEach((c,k)=>{const b=document.createElement("button");b.className="rep";b.textContent=c;b.onclick=()=>{alert(k===bonne?"Bravo ✅":"Non, c'était : "+choix[bonne]);quiz(n,i+1,score+(k===bonne))};app.appendChild(b)})}
-menu();
+function melange(t){t=t.slice();for(let i=t.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[t[i],t[j]]=[t[j],t[i]]}return t}
+function bouton(txt,fn,cls){const b=document.createElement("button");b.textContent=txt;if(cls)b.className=cls;b.onclick=fn;app.appendChild(b);return b}
+function accueil(){window.scrollTo(0,0);app.innerHTML='<div class="carte"><b>Comment ça marche :</b> lis la règle, puis fais les 10 exercices. Chaque réponse est expliquée. À la fin, fais le quiz final.</div>';
+for(const k in LECONS)bouton(LECONS[k].titre,()=>lecon(k));
+bouton("🎯 Quiz final B2 (10 questions)",quizFinal);}
+function lecon(k){window.scrollTo(0,0);const L=LECONS[k];app.innerHTML="<h2>"+L.titre+'</h2><div class="carte">'+L.regle+"</div>";
+bouton("Commencer les 10 exercices",()=>serie(L.titre,L.ex,()=>lecon(k)));bouton("← Retour",accueil,"sec");}
+function serie(titre,liste,retour){let i=0,score=0;const qs=liste.map(q=>q);
+function pose(){window.scrollTo(0,0);if(i>=qs.length){app.innerHTML='<h2>'+titre+'</h2><div class="carte"><h2>Score : '+score+' / '+qs.length+'</h2><p>'+(score>=8?"Très bien ! Tu maîtrises ce point.":score>=5?"Pas mal. Relis la règle et refais les exercices.":"Relis la règle tranquillement, puis réessaie.")+'</p></div>';bouton("Recommencer",()=>serie(titre,liste,retour));bouton("← Retour",retour,"sec");bouton("Accueil",accueil,"sec");return}
+const [q,choix,bonne,expl]=qs[i];app.innerHTML='<p class="prog">'+titre+" · "+(i+1)+" / "+qs.length+'</p><div class="carte"><b>'+q+"</b></div>";
+const ordre=melange(choix.map((c,n)=>n));const btns=[];let fini=false;
+ordre.forEach(n=>{const b=bouton(choix[n],()=>{if(fini)return;fini=true;if(n===bonne){score++;b.classList.add("ok")}else{b.classList.add("ko");btns.find(x=>x.n===bonne).b.classList.add("ok")}
+const d=document.createElement("div");d.className="expl";d.innerHTML=(n===bonne?"✅ Bonne réponse. ":"❌ La bonne réponse : <b>"+choix[bonne]+"</b>. ")+expl;app.appendChild(d);bouton(i+1<qs.length?"Question suivante →":"Voir mon score",()=>{i++;pose()})},"rep");btns.push({n,b})})}
+pose();}
+function quizFinal(){const tout=[];for(const k in LECONS)tout.push(...LECONS[k].ex);serie("🎯 Quiz final B2",melange(tout).slice(0,10),accueil)}
+accueil();
 </script>
 </body>
 </html>
