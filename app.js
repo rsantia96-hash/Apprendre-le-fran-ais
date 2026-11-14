@@ -3,6 +3,7 @@
 const CLE = "apf-v2";
 const SEUIL = 0.7; // 70 % pour réussir un module
 const BOITES = [1, 3, 7, 14, 30]; // répétition espacée (jours)
+const TIRAGE = 10; // questions par passage
 
 let E = charger();
 function charger() {
@@ -82,6 +83,8 @@ function accueil() {
     <div class="anneau" style="--p:${p}"><span>${p}<small>%</small></span></div>
     <div><b>Ta progression vers le B2</b><br><span class="petit">Objectif : passer l'examen en ${examenMois()}<br>${sem} semaines restantes · ${rest} modules à faire</span><br><span class="petit fort">${avance}</span></div>
   </div>`);
+  const sj = serieJours(); const nb = Object.keys(E.badges || {}).length;
+  ajoute(`<div class="jeu"><span>🔥 <b>${sj}</b> jour${sj > 1 ? "s" : ""} de suite</span><span>🏅 <b>${nb}</b> / ${BADGES.length} badges</span><span>✅ <b>${E.bonnes || 0}</b> bonnes réponses</span></div>`);
   const pe = parEpreuve(); let barres = '<div class="carte"><b>Tes compétences</b>';
   for (const k in EPREUVES) if (pe[k]) { const v = Math.round(100 * pe[k].f / pe[k].t); barres += `<div class="ligne"><span>${EPREUVES[k].icone} ${EPREUVES[k].nom}</span><div class="barre"><i style="width:${v}%"></i></div><span class="petit">${v}%</span></div>`; }
   ajoute(barres + "</div>");
@@ -96,8 +99,11 @@ function accueil() {
     ajoute('<div class="carte accent"><b>Commence par le test de niveau</b><br><span class="petit">15 questions, 5 minutes. Il te place au bon niveau et ouvre les modules qui te correspondent.</span></div>');
     bouton("🧭 Faire le test de niveau", testNiveau);
   }
+  if (E.depart && !(E.defis && E.defis[aujourdhui()] != null)) bouton("⚡ Défi du jour : 5 questions", defiDuJour, "vert");
   const rv = aReviser();
   if (rv.length) bouton("🔁 Mes révisions du jour (" + rv.length + ")", revisions, "vert");
+  if (hebdoDispo() && !(E.hebdo && E.hebdo[hebdoSemaine()] != null) && hebdoPool().length >= 5) bouton("📅 Révision de la semaine", revisionSemaine, "vert");
+  const ne = toutesErreurs().length; if (ne) bouton("❗ Mes erreurs (" + ne + ")", pageErreurs, "sec");
   const suiv = prochain(); if (suiv) bouton("▶️ Continuer : " + suiv.m.titre, () => ouvrir(suiv.m));
 
   NIVEAUX.forEach((n, i) => {
@@ -112,6 +118,9 @@ function accueil() {
   });
   ajoute('<h2>Plus</h2>');
   bouton("📚 Mes mots (cartes de vocabulaire)", cartesMots, "sec");
+  bouton("❗ Mes erreurs (" + toutesErreurs().length + ")", pageErreurs, "sec");
+  bouton("🏅 Mes badges", pageBadges, "sec");
+  bouton("📅 Révision de la semaine" + (hebdoDispo() ? "" : " (dimanche et lundi)"), () => hebdoDispo() ? revisionSemaine() : (vider(), ajoute('<div class="carte">La révision de la semaine s\'ouvre le dimanche et reste disponible le lundi.</div>'), bouton("← Retour", accueil, "sec")), "sec");
   bouton("ℹ️ Le test B2 et la méthode", infos, "sec");
   bouton("📅 Changer la date de mon examen", changerDate, "sec");
   bouton("📲 Mettre le site sur mon écran d'accueil", ecranAccueil, "sec");
@@ -122,33 +131,60 @@ function prochain() {
   for (let i = 0; i < NIVEAUX.length; i++) { if (!niveauOuvert(i)) break; const m = NIVEAUX[i].modules.find(m => !reussi(m.id)); if (m) return { n: NIVEAUX[i], m }; }
   return null;
 }
-function ouvrir(m) {
-  ({ qcm: moduleQcm, lecture: moduleDocs, ecoute: moduleDocs, ecrit: moduleEcrit, oral: moduleOral, blanc: moduleBlanc, "blanc-comp": moduleBlancComp })[m.type](m);
+function ouvrir(m, autre) {
+  ({ qcm: moduleQcm, lecture: moduleDocs, ecoute: moduleDocs, ecrit: moduleEcrit, oral: moduleOral, blanc: moduleBlanc, "blanc-comp": moduleBlancComp })[m.type](m, autre);
 }
 function enregistrer(m, ratio) {
   const s = E.modules[m.id] || {}; s.meilleur = Math.max(s.meilleur || 0, ratio); s.essais = (s.essais || 0) + 1;
   if (ratio >= SEUIL) s.ok = true; s.date = Date.now(); E.modules[m.id] = s; sauver();
 }
-function motsHtml(m) { return m.mots && m.mots.length ? '<div class="carte mots"><b>Mots utiles</b><ul>' + m.mots.map(([a, b]) => `<li><b>${esc(a)}</b> : ${esc(b)}</li>`).join("") + "</ul></div>" : ""; }
+function motsHtml(m) { return Array.isArray(m.mots) && Array.isArray(m.mots[0]) ? '<div class="carte mots"><b>Mots utiles</b><ul>' + m.mots.map(([a, b]) => `<li><b>${esc(a)}</b> : ${esc(b)}</li>`).join("") + "</ul></div>" : ""; }
 
 // ---------- Série de questions (commune) ----------
-function serie(titre, qs, fin, avant) {
-  let i = 0, score = 0;
+function trouverModule(id) { for (const n of NIVEAUX) for (const m of n.modules) if (m.id === id) return m; return null; }
+function resoudre(cle) { // retrouve une question de la banque à partir de sa clé
+  const p = cle.split(":"); const m = trouverModule(p[0]); if (!m) return null;
+  if (p.length === 2 && m.q && m.q[+p[1]]) return { q: m.q[+p[1]], cle, mod: m.id };
+  if (p.length === 3 && m.docs && m.docs[+p[1]] && m.docs[+p[1]].q[+p[2]]) return { q: m.docs[+p[1]].q[+p[2]], cle, mod: m.id, d: m.docs[+p[1]], ecoute: m.type === "ecoute" };
+  return null;
+}
+// ---------- Erreurs (comme le code de la route) ----------
+function noterErreur(cle) { E.erreurs = E.erreurs || {}; const r = E.erreurs[cle] || { fois: 0 }; r.fois++; r.suite = 0; E.erreurs[cle] = r; }
+function noterJuste(cle) { if (!E.erreurs || !E.erreurs[cle]) return; E.erreurs[cle].suite = (E.erreurs[cle].suite || 0) + 1; if (E.erreurs[cle].suite >= 2) delete E.erreurs[cle]; }
+function erreursDe(modId) { return Object.keys(E.erreurs || {}).filter(c => c.split(":")[0] === modId && resoudre(c)); }
+function toutesErreurs() { return Object.keys(E.erreurs || {}).filter(c => resoudre(c)); }
+
+function afficherDoc(q, etat) {
+  if (!q.d) return;
+  if (q.ecoute) {
+    ajoute(`<div class="carte"><b>🎧 ${esc(q.d.titre)}</b></div>`);
+    const ligne = document.createElement("div"); ligne.className = "duo"; app.appendChild(ligne);
+    bouton("▶️ Écouter", () => dire(q.d.audio, 0.95), "", ligne);
+    bouton("🐢 Plus lent", () => dire(q.d.audio, 0.75), "sec", ligne);
+    const tr = $(`<details class="carte petit"><summary>Voir le texte (après avoir répondu)</summary>${esc(q.d.audio)}</details>`); app.appendChild(tr.firstChild);
+    if (etat.doc !== q.d) { etat.doc = q.d; setTimeout(() => dire(q.d.audio, 0.95), 300); }
+  } else ajoute(`<div class="carte doc"><b>${esc(q.d.titre)}</b>${q.d.texte}</div>`);
+}
+function serie(titre, qs, fin) {
+  let i = 0, score = 0; const ratees = [], etat = {};
   function pose() {
     vider();
-    if (i >= qs.length) return fin(score, qs.length);
+    if (i >= qs.length) return fin(score, qs.length, ratees);
     const q = qs[i]; const [enonce, choix, bonne, expl] = q.q;
-    ajoute(`<p class="petit">${esc(titre)} · ${i + 1} / ${qs.length}</p>`);
-    if (avant) avant(q);
+    ajoute(`<p class="petit">${esc(titre)} · ${i + 1} / ${qs.length}${E.erreurs && E.erreurs[q.cle] ? " · ❗ déjà ratée" : ""}</p>`);
+    afficherDoc(q, etat);
     ajoute(`<div class="carte"><b>${esc(enonce)}</b></div>`);
     let fini = false; const btns = {};
     melange(choix.map((c, n) => n)).forEach(n => {
       const b = bouton(choix[n], () => {
         if (fini) return; fini = true;
-        if (n === bonne) { score++; b.classList.add("ok"); if (E.revisions[q.cle]) revOk(q.cle); }
-        else { b.classList.add("ko"); btns[bonne].classList.add("ok"); ajouterRevision(q.cle, q.q); }
+        E.vues = E.vues || {}; const av = E.vues[q.cle]; E.vues[q.cle] = { t: Date.now(), juste: n === bonne, rate: (av && av.rate) || n !== bonne };
+        marquerJour(); if (n === bonne) E.bonnes = (E.bonnes || 0) + 1;
+        if (n === bonne) { score++; b.classList.add("ok", "pop"); if (E.revisions[q.cle]) revOk(q.cle); noterJuste(q.cle); }
+        else { b.classList.add("ko"); btns[bonne].classList.add("ok"); ajouterRevision(q.cle, q.q); noterErreur(q.cle); ratees.push(q); }
         sauver();
-        ajoute(`<div class="expl">${n === bonne ? "✅ Bonne réponse. " : "❌ La bonne réponse : <b>" + esc(choix[bonne]) + "</b>. "}${esc(expl)}</div>`);
+        const enc = n === bonne ? (av && av.rate ? "✅ Bravo, tu l'avais ratée avant : elle rentre. " : "✅ Bonne réponse. ") : null;
+        ajoute(`<div class="expl">${n === bonne ? enc : "❌ La bonne réponse : <b>" + esc(choix[bonne]) + "</b>. "}${esc(expl)}</div>`);
         bouton(i + 1 < qs.length ? "Question suivante →" : "Voir mon score", () => { i++; pose(); });
       }, "rep"); btns[n] = b;
     });
@@ -157,10 +193,33 @@ function serie(titre, qs, fin, avant) {
   pose();
 }
 function revOk(cle) { const r = E.revisions[cle]; if (!r) return; r.boite++; if (r.boite >= BOITES.length) delete E.revisions[cle]; else r.due = Date.now() + BOITES[r.boite] * jour; }
-function ecranScore(m, s, t, refaire) {
+function refaireErreurs(liste, retour) {
+  serie("Refaire mes erreurs", melange(liste), (s, t, r) => {
+    vider(); ajoute(`<div class="carte"><h2>${s} / ${t}</h2><p>${r.length ? "Encore " + r.length + " à revoir. Une question quitte ta liste d'erreurs quand tu la réussis 2 fois de suite." : "Tout est juste 👏 Réussis-les encore une fois plus tard pour les sortir de ta liste."}</p></div>`);
+    if (r.length) bouton("❗ Refaire mes erreurs (" + r.length + ")", () => refaireErreurs(r, retour));
+    bouton("Retour", retour, "sec");
+  });
+}
+function ecranScore(m, s, t, refaire, ratees) {
+  const avant = etat(m.id) && etat(m.id).meilleur;
   enregistrer(m, s / t); const ok = s / t >= SEUIL;
-  ajoute(`<div class="carte"><h2>${s} / ${t}</h2><p>${ok ? "Module réussi ✅ Ta progression est à <b>" + pourcentage() + " %</b>." : "Il faut " + Math.ceil(t * SEUIL) + " bonnes réponses pour valider. Tes erreurs sont ajoutées à tes révisions : tu les reverras dans quelques jours."}</p></div>`);
-  bouton("Recommencer", refaire, "sec"); bouton("Retour à l'accueil", accueil);
+  if (avant != null && !etat(m.id).dispense) ajoute(`<p class="petit">${s / t > avant ? "📈 Nouveau record sur ce module (avant : " + Math.round(avant * t) + " / " + t + ")." : "Ton record sur ce module : " + Math.round(avant * 100) + " %."}</p>`);
+  ajoute(`<div class="carte"><h2>${s} / ${t}</h2><p>${ok ? "Module réussi ✅ Ta progression est à <b>" + pourcentage() + " %</b>." : "Il faut " + Math.ceil(t * SEUIL) + " bonnes réponses pour valider."}</p>${ratees && ratees.length ? '<p class="petit">Tes erreurs reviendront en premier à ta prochaine série, et dans tes révisions des prochains jours.</p>' : ""}</div>`);
+  bandeauBadges(nouveauxBadges());
+  if (ratees && ratees.length) bouton("❗ Refaire mes erreurs (" + ratees.length + ")", () => refaireErreurs(ratees, accueil));
+  bouton("Nouvelle série", refaire, "sec"); bouton("Retour à l'accueil", accueil, "sec");
+}
+function pageErreurs() {
+  vider(); const tout = toutesErreurs();
+  ajoute(`<h2>❗ Mes erreurs <span class="petit">· ${tout.length}</span></h2><div class="carte petit">Une question quitte la liste quand tu la réussis 2 fois de suite.</div>`);
+  if (!tout.length) { ajoute('<div class="carte">Aucune erreur en attente 👍</div>'); return bouton("← Retour", accueil, "sec"); }
+  bouton("Refaire toutes mes erreurs (" + tout.length + ")", () => refaireErreurs(tout.map(resoudre), pageErreurs));
+  NIVEAUX.forEach(n => n.modules.forEach(m => { const e = erreursDe(m.id); if (e.length) bouton(EPREUVES[m.epreuve].icone + " " + m.titre + " · " + e.length, () => refaireErreurs(e.map(resoudre), pageErreurs), "rep"); }));
+  bouton("← Retour", accueil, "sec");
+}
+function blocErreursModule(m) {
+  const e = erreursDe(m.id);
+  if (e.length) { ajoute(`<div class="carte accent petit">❗ ${e.length} erreur${e.length > 1 ? "s" : ""} en attente dans ce module. Elles passeront en premier.</div>`); bouton("Refaire mes erreurs de ce module (" + e.length + ")", () => refaireErreurs(e.map(resoudre), () => ouvrir(m)), "sec"); }
 }
 
 // ---------- QCM avec règle ----------
@@ -168,44 +227,56 @@ function moduleQcm(m) {
   vider();
   ajoute(`<h2>${EPREUVES[m.epreuve].icone} ${esc(m.titre)}</h2>${motsHtml(m)}<div class="carte regle">${m.regle}</div>`);
   ajoute('<p class="petit">Conseil : lis la règle, cache-la, puis essaie de la redire avec tes mots avant de commencer.</p>');
-  bouton("Commencer les " + m.q.length + " exercices", () => serie(m.titre, m.q.map((q, k) => ({ q, cle: m.id + ":" + k })), (s, t) => ecranScore(m, s, t, () => moduleQcm(m))));
+  const nb = Math.min(TIRAGE, m.q.length);
+  ajoute(`<p class="petit">${nb} questions tirées au hasard dans une banque de ${m.q.length}. Chaque passage est différent.</p>`);
+  blocErreursModule(m);
+  bouton("Commencer les " + nb + " exercices", () => {
+    const err = melange(erreursDe(m.id)).slice(0, nb).map(resoudre);
+    const reste = melange(m.q.map((q, k) => ({ q, cle: m.id + ":" + k })).filter(x => !err.some(e => e.cle === x.cle)));
+    serie(m.titre, err.concat(reste).slice(0, nb), (s, t, r) => ecranScore(m, s, t, () => moduleQcm(m), r));
+  });
   bouton("← Retour", accueil, "sec");
 }
 
 // ---------- Lecture / écoute ----------
 function moduleDocs(m) {
   vider(); const ecoute = m.type === "ecoute";
-  ajoute(`<h2>${EPREUVES[m.epreuve].icone} ${esc(m.titre)}</h2>${motsHtml(m)}<div class="carte petit">${ecoute ? "Écoute d'abord sans lire. Tu peux réécouter, puis ralentir. Le texte s'affiche à la fin de chaque document." : "Lis d'abord les questions, puis cherche les réponses dans le texte."}</div>`);
-  const qs = []; m.docs.forEach((d, di) => d.q.forEach((q, k) => qs.push({ q, cle: m.id + ":" + di + ":" + k, d, di })));
+  ajoute(`<h2>${EPREUVES[m.epreuve].icone} ${esc(m.titre)}</h2>${motsHtml(m)}<div class="carte petit">${ecoute ? "Écoute d'abord sans lire. Tu peux réécouter, puis ralentir. Le texte s'affiche après ta réponse." : "Lis d'abord la question, puis cherche la réponse dans le texte."}</div>`);
+  let tot = 0; m.docs.forEach(d => tot += d.q.length);
+  ajoute(`<p class="petit">Documents tirés au hasard dans une banque de ${m.docs.length} documents (${tot} questions).</p>`);
+  blocErreursModule(m);
   bouton("Commencer", () => {
-    let dernier = -1;
-    serie(m.titre, qs, (s, t) => ecranScore(m, s, t, () => moduleDocs(m)), (q) => {
-      if (ecoute) {
-        ajoute(`<div class="carte"><b>🎧 ${esc(q.d.titre)}</b></div>`);
-        const ligne = document.createElement("div"); ligne.className = "duo"; app.appendChild(ligne);
-        bouton("▶️ Écouter", () => dire(q.d.audio, 0.95), "", ligne);
-        bouton("🐢 Plus lent", () => dire(q.d.audio, 0.75), "sec", ligne);
-        const tr = $(`<details class="carte petit"><summary>Voir le texte (après avoir répondu)</summary>${esc(q.d.audio)}</details>`); app.appendChild(tr.firstChild);
-        if (dernier !== q.di) { dernier = q.di; setTimeout(() => dire(q.d.audio, 0.95), 300); }
-      } else ajoute(`<div class="carte doc"><b>${esc(q.d.titre)}</b>${q.d.texte}</div>`);
-    });
+    // d'abord les documents où il reste des erreurs, puis au hasard
+    const errDocs = new Set(erreursDe(m.id).map(c => +c.split(":")[1]));
+    const ordre = melange(m.docs.map((d, di) => di)).sort((x, y) => errDocs.has(y) - errDocs.has(x));
+    const qs = []; for (const di of ordre) { if (qs.length >= TIRAGE) break; m.docs[di].q.forEach((q, k) => qs.push(resoudre(m.id + ":" + di + ":" + k))); }
+    serie(m.titre, qs, (s, t, r) => ecranScore(m, s, t, () => moduleDocs(m), r));
   });
   bouton("← Retour", accueil, "sec");
 }
 
 // ---------- Écrit ----------
 function compte(t) { return (t.trim().match(/[\wÀ-ÿ'’-]+/g) || []).length; }
-function moduleEcrit(m) {
-  vider();
+function sujet(m, autre) {
+  if (!m.sujets) return m;
+  E.sujets = E.sujets || {};
+  let k = E.sujets[m.id];
+  if (k == null || autre || k >= m.sujets.length) { let n; do { n = Math.floor(Math.random() * m.sujets.length); } while (m.sujets.length > 1 && n === k); k = n; E.sujets[m.id] = k; sauver(); }
+  return Object.assign({}, m, m.sujets[k], { idTexte: m.id + ":" + k, numSujet: k + 1 });
+}
+function boutonAutre(m) { if (m.sujets && m.sujets.length > 1) bouton("🎲 Un autre sujet (" + m.sujets.length + " sujets)", () => ouvrir(m, true), "sec"); }
+function moduleEcrit(m0, autre) {
+  const m = sujet(m0, autre); vider();
   ajoute(`<h2>✍️ ${esc(m.titre)}</h2><div class="carte"><b>Consigne</b><p>${esc(m.consigne)}</p><p class="petit">Longueur : ${m.mots[0]} à ${m.mots[1]} mots${m.minuteur ? " · " + m.minuteur + " minutes" : ""}.</p></div>`);
   ajoute('<details class="carte"><summary><b>Phrases utiles</b></summary><ul>' + m.aide.map(a => "<li>" + esc(a) + "</li>").join("") + "</ul></details>");
   if (m.minuteur) minuteur(m.minuteur);
-  const ta = document.createElement("textarea"); ta.placeholder = "Écris ton texte ici…"; ta.value = E.textes[m.id] || ""; app.appendChild(ta);
+  const ta = document.createElement("textarea"); ta.placeholder = "Écris ton texte ici…"; ta.value = E.textes[m.idTexte || m.id] || ""; app.appendChild(ta);
   const nb = $('<p class="petit"></p>').firstChild; app.appendChild(nb);
-  const maj = () => { const c = compte(ta.value); nb.textContent = c + " mots" + (c < m.mots[0] ? " (encore " + (m.mots[0] - c) + ")" : c > m.mots[1] ? " (un peu trop long)" : " ✔"); E.textes[m.id] = ta.value; sauver(); };
+  const maj = () => { const c = compte(ta.value); nb.textContent = c + " mots" + (c < m.mots[0] ? " (encore " + (m.mots[0] - c) + ")" : c > m.mots[1] ? " (un peu trop long)" : " ✔"); E.textes[m.idTexte || m.id] = ta.value; sauver(); };
   ta.oninput = maj; maj();
   bouton("📋 Copier mon texte (pour le faire corriger)", () => { navigator.clipboard && navigator.clipboard.writeText(m.consigne + "\n\n" + ta.value).then(() => alert("Texte copié. Colle-le dans un message à ton correcteur.")); }, "sec");
-  bouton("Voir un modèle B2 et m'auto-évaluer", () => autoEval(m, "modele"));
+  bouton("Voir un modèle et m'auto-évaluer", () => autoEval(m));
+  boutonAutre(m0);
   bouton("← Retour", accueil, "sec");
 }
 function minuteur(min) {
@@ -215,7 +286,7 @@ function minuteur(min) {
 }
 function autoEval(m) {
   vider();
-  ajoute(`<h2>${EPREUVES[m.epreuve].icone} ${esc(m.titre)}</h2><div class="carte"><b>Modèle B2</b><p class="modele">${esc(m.modele).replace(/\n/g, "<br>")}</p></div>`);
+  ajoute(`<h2>${EPREUVES[m.epreuve].icone} ${esc(m.titre)}</h2><div class="carte"><b>Modèle${m.numSujet ? " (sujet " + m.numSujet + ")" : ""}</b><p class="modele">${esc(m.modele).replace(/\n/g, "<br>")}</p></div>`);
   if (m.type === "oral") {
     ajoute('<div class="carte petit"><b>Shadowing :</b> écoute une phrase, puis répète-la en même temps que la voix, avec la même mélodie. Fais-le 2 ou 3 fois.</div>');
     const l = document.createElement("div"); l.className = "duo"; app.appendChild(l);
@@ -226,22 +297,25 @@ function autoEval(m) {
   bouton("Valider mon auto-évaluation", () => {
     const r = cases.filter(c => c.checked).length / cases.length; enregistrer(m, r); vider();
     ajoute(`<div class="carte"><h2>${Math.round(r * 100)} %</h2><p>${r >= SEUIL ? "Module validé ✅ Progression : <b>" + pourcentage() + " %</b>." : "Pas encore validé. Reprends ton texte avec le modèle sous les yeux, puis réessaie."}</p><p class="petit">Le plus efficace : fais corriger ton texte ou ton enregistrement par quelqu'un, puis réécris-le une fois corrigé.</p></div>`);
-    bouton("Refaire", () => ouvrir(m), "sec"); bouton("Retour à l'accueil", accueil);
+    bouton("Refaire", () => ouvrir(NIVEAUX.flatMap(n => n.modules).find(x => x.id === m.id)), "sec"); bouton("Retour à l'accueil", accueil);
   });
-  bouton("← Retour", () => ouvrir(m), "sec");
+  bouton("← Retour", () => ouvrir(NIVEAUX.flatMap(n => n.modules).find(x => x.id === m.id)), "sec");
 }
 
 // ---------- Oral ----------
-function moduleOral(m) {
-  vider();
+function moduleOral(m0, autre) {
+  const m = sujet(m0, autre); vider();
   ajoute(`<h2>🗣️ ${esc(m.titre)}</h2><div class="carte"><b>Consigne</b><p>${esc(m.consigne)}</p></div>`);
-  ajoute('<div class="carte"><b>Questions possibles de l\'examinateur</b><ul>' + m.questions.map(q => "<li>" + esc(q) + "</li>").join("") + "</ul></div>");
-  const l = document.createElement("div"); l.className = "duo"; app.appendChild(l);
-  bouton("🔊 Entendre les questions", () => dire(m.questions.join(". ")), "sec", l);
+  if (m.questions && m.questions.length) {
+    ajoute('<div class="carte"><b>Questions possibles de l\'examinateur</b><ul>' + m.questions.map(q => "<li>" + esc(q) + "</li>").join("") + "</ul></div>");
+    const l = document.createElement("div"); l.className = "duo"; app.appendChild(l);
+    bouton("🔊 Entendre les questions", () => dire(m.questions.join(" ")), "sec", l);
+  }
   ajoute('<details class="carte"><summary><b>Phrases utiles</b></summary><ul>' + m.aide.map(a => "<li>" + esc(a) + "</li>").join("") + "</ul></details>");
   ajoute('<div class="carte petit">Parle à voix haute. Le mieux : enregistre-toi avec l\'app Dictaphone (ou un vocal), réécoute-toi, puis compare avec le modèle.</div>');
   minuteur(m.minuteur || 3);
   bouton("J'ai parlé : voir le modèle et m'auto-évaluer", () => autoEval(m));
+  boutonAutre(m0);
   bouton("← Retour", accueil, "sec");
 }
 
@@ -250,20 +324,94 @@ function moduleBlanc(m) {
   const pool = [];
   NIVEAUX.filter(n => m.niveaux.includes(n.id)).forEach(n => n.modules.filter(x => x.type === "qcm" && m.source.includes(x.epreuve)).forEach(x => x.q.forEach((q, k) => pool.push({ q, cle: x.id + ":" + k }))));
   vider(); ajoute(`<h2>🎯 ${esc(m.titre)}</h2><div class="carte petit">Des questions tirées au hasard dans tout le parcours. Il faut ${Math.round(SEUIL * 100)} % pour valider.</div>`);
-  bouton("Commencer", () => serie(m.titre, melange(pool).slice(0, m.nb), (s, t) => ecranScore(m, s, t, () => moduleBlanc(m))));
+  bouton("Commencer", () => serie(m.titre, melange(pool).slice(0, m.nb), (s, t, r) => ecranScore(m, s, t, () => moduleBlanc(m), r)));
   bouton("← Retour", accueil, "sec");
 }
 function moduleBlancComp(m) {
   const docs = []; NIVEAUX.forEach(n => n.id !== "a2" && n.modules.filter(x => x.type === "lecture" || x.type === "ecoute").forEach(x => x.docs.forEach((d, di) => docs.push({ x, d, di }))));
-  const qs = []; melange(docs).forEach(o => o.d.q.forEach((q, k) => qs.length < m.nb + 4 && qs.push({ q, cle: o.x.id + ":" + o.di + ":" + k, d: o.d, ecoute: o.x.type === "ecoute" })));
   vider(); ajoute(`<h2>🎯 ${esc(m.titre)}</h2><div class="carte petit">Documents écrits et sonores mélangés, comme le jour du test. Écoute une seule fois si tu veux te mettre en condition.</div>`);
   bouton("Commencer", () => {
-    let der = null;
-    serie(m.titre, qs, (s, t) => ecranScore(m, s, t, () => moduleBlancComp(m)), (q) => {
-      if (q.ecoute) { ajoute(`<div class="carte"><b>🎧 ${esc(q.d.titre)}</b></div>`); bouton("▶️ Écouter", () => dire(q.d.audio), "sec"); if (der !== q.d) { der = q.d; setTimeout(() => dire(q.d.audio), 300); } }
-      else ajoute(`<div class="carte doc"><b>${esc(q.d.titre)}</b>${q.d.texte}</div>`);
-    });
+    const qs = []; for (const o of melange(docs)) { if (qs.length >= m.nb) break; o.d.q.forEach((q, k) => qs.push(resoudre(o.x.id + ":" + o.di + ":" + k))); }
+    serie(m.titre, qs, (s, t, r) => ecranScore(m, s, t, () => moduleBlancComp(m), r));
   });
+  bouton("← Retour", accueil, "sec");
+}
+
+// ---------- Jeu : série de jours, badges, défi du jour ----------
+function aujourdhui(d) { const x = d ? new Date(d) : new Date(); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
+function marquerJour() { E.jours = E.jours || {}; E.jours[aujourdhui()] = 1; E.bonnes = (E.bonnes || 0); }
+function serieJours() {
+  const j = E.jours || {}; let n = 0; const d = new Date();
+  if (!j[aujourdhui(d)]) d.setDate(d.getDate() - 1); // la série tient encore si on a travaillé hier
+  while (j[aujourdhui(d)]) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+const BADGES = [
+  ["premier", "🌱", "Premier module réussi", () => tousModules().some(x => etat(x.m.id) && etat(x.m.id).ok)],
+  ["bonnes100", "🎯", "100 bonnes réponses", () => (E.bonnes || 0) >= 100],
+  ["bonnes500", "🏹", "500 bonnes réponses", () => (E.bonnes || 0) >= 500],
+  ["serie3", "🔥", "3 jours de suite", () => serieJours() >= 3],
+  ["serie7", "⚡", "7 jours de suite", () => serieJours() >= 7],
+  ["serie30", "🌟", "30 jours de suite", () => serieJours() >= 30],
+  ["a2", "🥉", "Niveau A2 terminé", () => NIVEAUX[0].modules.every(m => reussi(m.id) && !etat(m.id).dispense)],
+  ["b1", "🥈", "Niveau B1 terminé", () => NIVEAUX[1].modules.every(m => reussi(m.id) && !etat(m.id).dispense)],
+  ["b2", "🥇", "Niveau B2 terminé", () => NIVEAUX[2].modules.every(m => reussi(m.id))],
+  ["examen", "🏆", "Examen blanc réussi", () => NIVEAUX[3].modules.every(m => reussi(m.id))],
+  ["zero", "🧹", "Plus aucune erreur en attente", () => (E.bonnes || 0) >= 50 && toutesErreurs().length === 0]
+];
+function nouveauxBadges() {
+  E.badges = E.badges || {}; const n = [];
+  BADGES.forEach(([id, ic, nom, f]) => { if (!E.badges[id] && f()) { E.badges[id] = Date.now(); n.push(ic + " " + nom); } });
+  if (n.length) sauver(); return n;
+}
+function bandeauBadges(n) { if (n.length) ajoute(`<div class="carte badge-new">Nouveau badge : <b>${n.map(esc).join(", ")}</b></div>`); }
+function graine(str) { let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
+function defiDuJour() {
+  const pool = [];
+  NIVEAUX.forEach((n, i) => { if (niveauOuvert(i)) n.modules.forEach(m => { if (m.type === "qcm") m.q.forEach((q, k) => pool.push(m.id + ":" + k)); }); });
+  const r = graine(aujourdhui()); const choisies = [];
+  while (choisies.length < 5 && pool.length) choisies.push(pool.splice(Math.floor(r() * pool.length), 1)[0]);
+  vider(); ajoute(`<h2>⚡ Défi du jour</h2><div class="carte petit">5 questions, les mêmes pour tout le monde aujourd'hui. 2 minutes, et ta série de jours continue.</div>`);
+  bouton("Relever le défi", () => serie("Défi du jour", choisies.map(resoudre), (s, t, rt) => {
+    E.defis = E.defis || {}; E.defis[aujourdhui()] = s; sauver(); vider();
+    ajoute(`<div class="carte"><h2>${s === t ? "Parfait ! " : ""}${s} / ${t}</h2><p>${s === t ? "Défi réussi sans faute." : "Les questions ratées sont dans tes erreurs : tu les reverras."}</p><p>🔥 Série : <b>${serieJours()} jour${serieJours() > 1 ? "s" : ""}</b></p></div>`);
+    bandeauBadges(nouveauxBadges());
+    if (rt.length) bouton("❗ Refaire mes erreurs (" + rt.length + ")", () => refaireErreurs(rt, accueil));
+    bouton("Retour à l'accueil", accueil, "sec");
+  }));
+  bouton("← Retour", accueil, "sec");
+}
+
+function pageBadges() {
+  nouveauxBadges(); vider(); ajoute(`<h2>🏅 Mes badges</h2>`);
+  BADGES.forEach(([id, ic, nom]) => ajoute(`<div class="carte ${E.badges && E.badges[id] ? "" : "gris"}">${ic} <b>${nom}</b>${E.badges && E.badges[id] ? " ✅" : ""}</div>`));
+  bouton("← Retour", accueil, "sec");
+}
+
+// ---------- Révision de la semaine (dimanche et lundi) ----------
+function semaineCle(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); const j = (x.getDay() + 6) % 7; x.setDate(x.getDate() - j); return x.toISOString().slice(0, 10); } // lundi de la semaine
+function hebdoDispo() { const j = new Date().getDay(); return j === 0 || j === 1; }
+function hebdoSemaine() { const d = new Date(); if (d.getDay() === 1) d.setDate(d.getDate() - 1); return semaineCle(d); } // le lundi, on révise la semaine qui vient de finir
+function hebdoPool() {
+  const fin = new Date(hebdoSemaine()); fin.setDate(fin.getDate() + 8); const debut = new Date(hebdoSemaine()).getTime();
+  const vues = Object.entries(E.vues || {}).filter(([c, v]) => v.t >= debut && v.t < fin.getTime() && resoudre(c));
+  const poids = ([c, v]) => (E.erreurs && E.erreurs[c] ? 0 : v.rate ? 1 : 2);
+  return melange(vues).sort((a, b) => poids(a) - poids(b)).map(([c]) => c);
+}
+function revisionSemaine() {
+  const pool = hebdoPool().slice(0, 20);
+  vider();
+  if (pool.length < 5) { ajoute('<div class="carte">Pas assez de questions travaillées cette semaine pour une révision. Fais quelques modules, et reviens dimanche 💪</div>'); return bouton("← Retour", accueil, "sec"); }
+  ajoute(`<h2>📅 Révision de la semaine</h2><div class="carte petit">${pool.length} questions des modules travaillés cette semaine, en commençant par celles que tu as ratées.</div>`);
+  bouton("Commencer", () => serie("Révision de la semaine", pool.map(resoudre), (s, t, r) => {
+    E.hebdo = E.hebdo || {}; const cle = hebdoSemaine(); E.hebdo[cle] = Math.round(100 * s / t); sauver();
+    const prec = Object.keys(E.hebdo).filter(k => k < cle).sort().pop();
+    const diff = prec != null ? E.hebdo[cle] - E.hebdo[prec] : null;
+    vider();
+    ajoute(`<div class="carte"><h2>Bilan de la semaine</h2><p><b>Score : ${s} / ${t} (${E.hebdo[cle]} %)</b></p><p>${diff == null ? "C'est ta première révision de la semaine : elle servira de point de comparaison." : diff > 0 ? "📈 +" + diff + " points par rapport à la semaine d'avant." : diff < 0 ? "📉 " + diff + " points par rapport à la semaine d'avant. Pas grave : refais tes erreurs." : "Même score que la semaine d'avant."}</p><p>Erreurs qui restent : <b>${toutesErreurs().length}</b></p><p>Progression totale : <b>${pourcentage()} %</b></p></div>`);
+    if (r.length) bouton("❗ Refaire mes erreurs (" + r.length + ")", () => refaireErreurs(r, accueil));
+    bouton("Retour à l'accueil", accueil, "sec");
+  }));
   bouton("← Retour", accueil, "sec");
 }
 
@@ -291,14 +439,14 @@ function testNiveau() {
 
 // ---------- Révisions du jour ----------
 function revisions() {
-  const items = melange(aReviser()).slice(0, 15).map(([cle, r]) => ({ q: r.item, cle }));
+  const items = melange(aReviser()).slice(0, 15).map(([cle, r]) => resoudre(cle) || { q: r.item, cle });
   if (!items.length) { vider(); ajoute('<div class="carte">Rien à réviser aujourd\'hui 👍</div>'); return bouton("Retour à l'accueil", accueil); }
   serie("Révisions", items, (s, t) => { vider(); ajoute(`<div class="carte"><h2>${s} / ${t}</h2><p>Les bonnes réponses reviennent plus tard (dans 3, 7, puis 14 jours). Les erreurs reviennent demain.</p></div>`); bouton("Retour à l'accueil", accueil); });
 }
 
 // ---------- Cartes de mots (rappel actif) ----------
 function cartesMots() {
-  const mots = []; tousModules().forEach(({ n, m }) => { if (niveauOuvert(NIVEAUX.indexOf(n))) (m.mots || []).forEach(x => mots.push(x)); });
+  const mots = []; tousModules().forEach(({ n, m }) => { if (niveauOuvert(NIVEAUX.indexOf(n))) (Array.isArray(m.mots) ? m.mots : []).forEach(x => { if (Array.isArray(x)) mots.push(x); }); });
   const paquet = melange(mots); let i = 0;
   (function carte() {
     vider(); if (i >= paquet.length) { ajoute('<div class="carte"><h2>Paquet terminé 🎉</h2></div>'); return bouton("Retour à l'accueil", accueil); }
